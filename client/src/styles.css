@@ -1479,14 +1479,19 @@ body{font-family:var(--mv-font,Inter,"Segoe UI",sans-serif)}
   }
 }
 
-/* Final mobile navigation + OTP controls */
-.otpRow{display:flex;gap:8px;align-items:center;margin:8px 0}.otpRow>*{min-width:0}.otpRow input{flex:1}.otpRow button{white-space:nowrap}
-@media(max-width:820px){
-  .app{position:relative!important;width:100%!important;min-height:100dvh!important;overflow-x:hidden!important}
-  .app>main{margin-left:0!important;width:100%!important;min-width:0!important;max-width:none!important}
-  .app>aside{position:fixed!important;top:0!important;left:0!important;right:auto!important;bottom:0!important;width:260px!important;height:100dvh!important;min-height:100dvh!important;max-height:none!important;margin:0!important;padding:0!important;z-index:1001!important;overflow-y:auto!important;overflow-x:hidden!important;transform:translate3d(-105%,0,0)!important;visibility:hidden!important;transition:transform .25s ease,visibility 0s linear .25s!important}
-  .app.mobileOpen>aside{transform:translate3d(0,0,0)!important;visibility:visible!important;transition:transform .25s ease,visibility 0s linear 0s!important}
-  .app.mobileOpen>main{margin-left:0!important;width:100%!important}
-  .mobileSidebarOverlay{position:fixed!important;inset:0!important;width:100vw!important;height:100dvh!important;background:rgba(0,0,0,.55)!important;z-index:1000!important}
-  .mobileMenu{display:grid!important;place-items:center!important;position:relative!important;z-index:1002!important}
+/* FINAL MOBILE NAVIGATION OVERRIDE */
+@media (max-width:820px){
+  html,body,#root{width:100%;min-width:0;min-height:100%;overflow-x:hidden}
+  .app{position:relative!important;display:block!important;width:100%!important;min-width:0!important;min-height:100dvh!important;margin:0!important;padding:0!important;overflow-x:hidden!important}
+  .app>main{width:100%!important;min-width:0!important;max-width:none!important;min-height:100dvh!important;margin:0!important}
+  .app>aside{position:fixed!important;top:0!important;left:0!important;right:auto!important;bottom:0!important;width:260px!important;height:100dvh!important;min-height:100dvh!important;max-height:100dvh!important;margin:0!important;padding:0!important;display:flex!important;flex-direction:column!important;overflow:hidden!important;overscroll-behavior:contain!important;z-index:1001!important;transform:translate3d(-105%,0,0)!important;visibility:hidden!important;opacity:0!important;pointer-events:none!important;transition:transform .22s ease,opacity .18s ease,visibility 0s linear .22s!important}
+  .app.mobileOpen>aside{transform:translate3d(0,0,0)!important;visibility:visible!important;opacity:1!important;pointer-events:auto!important;transition:transform .22s ease,opacity .18s ease,visibility 0s linear 0s!important}
+  .app>aside>.brand{flex:0 0 58px!important;height:58px!important;min-height:58px!important;overflow:hidden!important}
+  .app>aside>nav{flex:1 1 auto!important;min-height:0!important;overflow-y:auto!important;overflow-x:hidden!important;overscroll-behavior:contain!important;scrollbar-width:thin!important}
+  .app>aside>.sideBottom{flex:0 0 auto!important;width:100%!important;margin:0!important;padding:10px!important;position:relative!important;bottom:auto!important;border-top:1px solid var(--border)!important;background:inherit!important;z-index:2!important}
+  .mobileSidebarOverlay{position:fixed!important;inset:0!important;width:100vw!important;height:100dvh!important;margin:0!important;padding:0!important;background:rgba(0,0,0,.55)!important;z-index:1000!important;cursor:pointer!important}
+  .mobileMenu{display:grid!important;place-items:center!important;width:36px!important;height:36px!important;min-width:36px!important;padding:0!important;margin:0!important;position:relative!important;z-index:1002!important;background:transparent!important}
+  .app.mobileOpen .mobileMenu{display:none!important}
+  .app>main>header{width:100%!important;min-height:56px!important;height:56px!important;padding:0 10px!important}
 }
+@media (min-width:821px){.mobileMenu,.mobileSidebarOverlay{display:none!important}}

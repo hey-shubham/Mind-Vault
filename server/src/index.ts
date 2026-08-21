@@ -153,54 +153,6 @@ function normalizePhone(value:string){
   if(/^\d{10}$/.test(compact))return '+91'+compact;
   return '';
 }
-function twilioConfigured(){return Boolean(process.env.TWILIO_ACCOUNT_SID&&process.env.TWILIO_AUTH_TOKEN&&process.env.TWILIO_VERIFY_SERVICE_SID)}
-async function twilioVerifyStart(phone:string){
-  if(!twilioConfigured())throw new Error('SMS OTP is not configured. Add TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN and TWILIO_VERIFY_SERVICE_SID.');
-  const sid=String(process.env.TWILIO_ACCOUNT_SID);const token=String(process.env.TWILIO_AUTH_TOKEN);const service=String(process.env.TWILIO_VERIFY_SERVICE_SID);
-  const body=new URLSearchParams({To:phone,Channel:'sms'});
-  const r=await fetch(`https://verify.twilio.com/v2/Services/${encodeURIComponent(service)}/Verifications`,{method:'POST',headers:{Authorization:'Basic '+Buffer.from(`${sid}:${token}`).toString('base64'),'Content-Type':'application/x-www-form-urlencoded'},body});
-  const d:any=await r.json().catch(()=>({}));if(!r.ok)throw new Error(String(d.message||'Could not send OTP'));return d;
-}
-async function twilioVerifyCheck(phone:string,code:string){
-  if(!twilioConfigured())throw new Error('SMS OTP is not configured on this server.');
-  const sid=String(process.env.TWILIO_ACCOUNT_SID);const token=String(process.env.TWILIO_AUTH_TOKEN);const service=String(process.env.TWILIO_VERIFY_SERVICE_SID);
-  const body=new URLSearchParams({To:phone,Code:code});
-  const r=await fetch(`https://verify.twilio.com/v2/Services/${encodeURIComponent(service)}/VerificationCheck`,{method:'POST',headers:{Authorization:'Basic '+Buffer.from(`${sid}:${token}`).toString('base64'),'Content-Type':'application/x-www-form-urlencoded'},body});
-  const d:any=await r.json().catch(()=>({}));if(!r.ok)throw new Error(String(d.message||'OTP verification failed'));return d;
-}
-app.post('/api/auth/otp/request',async(req:any,res:any)=>{
-  try{
-    const phone=normalizePhone(req.body.phone);const purpose=['register','login'].includes(String(req.body.purpose))?String(req.body.purpose):'login';
-    if(!phone)return res.status(400).json({error:'Enter a valid phone number with country code, e.g. +91 9876543210'});
-    const existing=db.prepare('SELECT id FROM users WHERE phone=?').get(phone) as any;
-    if(purpose==='register'&&existing)return res.status(409).json({error:'Phone number is already registered'});
-    if(purpose==='login'&&!existing)return res.status(404).json({error:'No account is registered with this phone number'});
-    const recent=db.prepare("SELECT created_at FROM otp_challenges WHERE phone=? AND purpose=? ORDER BY id DESC LIMIT 1").get(phone,purpose) as any;
-    if(recent&&Date.now()-Date.parse(recent.created_at)<45_000)return res.status(429).json({error:'Please wait 45 seconds before requesting another OTP'});
-    const result:any=await twilioVerifyStart(phone);const created=now();const expires=new Date(Date.now()+10*60*1000).toISOString();
-    db.prepare('INSERT INTO otp_challenges(phone,purpose,provider_sid,verified,created_at,expires_at,attempts) VALUES(?,?,?,?,?,?,0)').run(phone,purpose,String(result.sid||''),0,created,expires);
-    res.json({ok:true,message:'OTP sent successfully',phone,expiresAt:expires});
-  }catch(e:any){res.status(503).json({error:e.message||'Could not send OTP'})}
-});
-app.post('/api/auth/otp/verify',async(req:any,res:any)=>{
-  try{
-    const phone=normalizePhone(req.body.phone);const code=String(req.body.code||'').trim();const purpose=['register','login'].includes(String(req.body.purpose))?String(req.body.purpose):'login';
-    if(!phone||!/^[0-9]{4,8}$/.test(code))return res.status(400).json({error:'Enter the OTP sent to your phone'});
-    const challenge=db.prepare('SELECT * FROM otp_challenges WHERE phone=? AND purpose=? ORDER BY id DESC LIMIT 1').get(phone,purpose) as any;
-    if(!challenge||Date.parse(challenge.expires_at)<Date.now())return res.status(400).json({error:'OTP expired. Request a new code.'});
-    if(Number(challenge.attempts)>=5)return res.status(429).json({error:'Too many incorrect attempts. Request a new OTP.'});
-    db.prepare('UPDATE otp_challenges SET attempts=attempts+1 WHERE id=?').run(challenge.id);
-    const result:any=await twilioVerifyCheck(phone,code);
-    if(result.status!=='approved')return res.status(401).json({error:'Incorrect OTP'});
-    db.prepare('UPDATE otp_challenges SET verified=1 WHERE id=?').run(challenge.id);
-    if(purpose==='login'){
-      const u=db.prepare('SELECT * FROM users WHERE phone=?').get(phone) as any;if(!u)return res.status(404).json({error:'Account not found'});
-      db.prepare('UPDATE users SET last_seen=? WHERE id=?').run(now(),u.id);log(u.id,'login_otp','user',u.id);return res.json({ok:true,token:sign(u),user:safeUser({...u,last_seen:now()})});
-    }
-    res.json({ok:true,verified:true,message:'Phone number verified'});
-  }catch(e:any){res.status(401).json({error:e.message||'OTP verification failed'})}
-});
-
 app.post('/api/auth/google',async(req,res)=>{
   try{
     if(!GOOGLE_CLIENT_ID)return res.status(503).json({error:'Google authentication is not configured on this server'});
@@ -250,7 +202,7 @@ app.post('/api/auth/reset-password',async(req:any,res:any)=>{
 });
 
 app.get('/api/auth/username-availability',(req:any,res:any)=>{const username=String(req.query.username||'').trim().toLowerCase();const valid=/^[a-z0-9](?:[a-z0-9]|[._-](?=[a-z0-9])){1,28}[a-z0-9]$/.test(username);if(!valid)return res.json({available:false,valid:false});const exists=db.prepare('SELECT id FROM users WHERE username=?').get(username);res.json({available:!exists,valid:true})});
-app.post('/api/auth/register',async(req,res)=>{try{const {email,password,name,phone,username}=req.body;const cleanEmail=String(email||'').trim().toLowerCase();const cleanName=String(name||'').trim();const cleanPhone=normalizePhone(phone);const cleanUsername=String(username||'').trim().toLowerCase();if(!cleanEmail||!password||!cleanName||!cleanUsername||!cleanPhone)return res.status(400).json({error:'Name, username, phone number, email and password are required'});const otp=db.prepare("SELECT id FROM otp_challenges WHERE phone=? AND purpose='register' AND verified=1 AND expires_at>? ORDER BY id DESC LIMIT 1").get(cleanPhone,now()) as any;if(!otp)return res.status(403).json({error:'Verify your phone number with OTP before creating the account'});if(!/^[a-z0-9](?:[a-z0-9]|[._-](?=[a-z0-9])){1,28}[a-z0-9]$/.test(cleanUsername))return res.status(400).json({error:'Username must be 3-30 characters and may contain letters, numbers, hyphens and dots'});if(password.length<6)return res.status(400).json({error:'Password must be at least 6 characters'});if(userByEmail(cleanEmail))return res.status(409).json({error:'Email already registered'});if(db.prepare('SELECT 1 FROM users WHERE username=?').get(cleanUsername))return res.status(409).json({error:'Username not available'});const ures=db.prepare('INSERT INTO users(email,password_hash,name,username,phone,created_at,last_seen) VALUES(?,?,?,?,?,?,?)').run(cleanEmail,await hashPassword(password),cleanName,cleanUsername,cleanPhone,now(),now());const u=db.prepare('SELECT * FROM users WHERE id=?').get(ures.lastInsertRowid) as any;db.prepare('INSERT INTO user_memories(user_id,memory_key,memory_value,created_at,updated_at) VALUES(?,?,?,?,?)').run(u.id,'name',u.name,now(),now());const ws=db.prepare('INSERT INTO workspaces(name,owner_id,created_at) VALUES(?,?,?)').run('Personal workspace',u.id,now());log(u.id,'signup','user',u.id);db.prepare("DELETE FROM otp_challenges WHERE phone=? AND purpose='register'").run(cleanPhone);return res.json({token:sign(u),user:safeUser(u),workspaceId:ws.lastInsertRowid})}catch(e){res.status(500).json({error:'Registration failed'})}});
+app.post('/api/auth/register',async(req,res)=>{try{const {email,password,name,phone,username}=req.body;const cleanEmail=String(email||'').trim().toLowerCase();const cleanName=String(name||'').trim();const cleanPhone=normalizePhone(phone);const cleanUsername=String(username||'').trim().toLowerCase();if(!cleanEmail||!password||!cleanName||!cleanUsername)return res.status(400).json({error:'Name, username, email and password are required'});if(!/^[a-z0-9](?:[a-z0-9]|[._-](?=[a-z0-9])){1,28}[a-z0-9]$/.test(cleanUsername))return res.status(400).json({error:'Username must be 3-30 characters and may contain letters, numbers, hyphens and dots'});if(password.length<6)return res.status(400).json({error:'Password must be at least 6 characters'});if(userByEmail(cleanEmail))return res.status(409).json({error:'Email already registered'});if(db.prepare('SELECT 1 FROM users WHERE username=?').get(cleanUsername))return res.status(409).json({error:'Username not available'});const ures=db.prepare('INSERT INTO users(email,password_hash,name,username,phone,created_at,last_seen) VALUES(?,?,?,?,?,?,?)').run(cleanEmail,await hashPassword(password),cleanName,cleanUsername,cleanPhone,now(),now());const u=db.prepare('SELECT * FROM users WHERE id=?').get(ures.lastInsertRowid) as any;db.prepare('INSERT INTO user_memories(user_id,memory_key,memory_value,created_at,updated_at) VALUES(?,?,?,?,?)').run(u.id,'name',u.name,now(),now());const ws=db.prepare('INSERT INTO workspaces(name,owner_id,created_at) VALUES(?,?,?)').run('Personal workspace',u.id,now());log(u.id,'signup','user',u.id);return res.json({token:sign(u),user:safeUser(u),workspaceId:ws.lastInsertRowid})}catch(e){res.status(500).json({error:'Registration failed'})}});
 app.post('/api/auth/login',async(req,res)=>{const {identifier,email,password}=req.body;const key=String(identifier||email||'').trim().toLowerCase();const u=(userByEmail(key)||db.prepare('SELECT * FROM users WHERE username=?').get(key)) as any;if(!u||!(await comparePassword(password||'',u.password_hash)))return res.status(401).json({error:'Invalid email or password'});db.prepare('UPDATE users SET last_seen=? WHERE id=?').run(now(),u.id);log(u.id,'login','user',u.id);res.json({token:sign(u),user:safeUser({...u,last_seen:now()})})});
 app.get('/api/auth/me',auth,(req:any,res)=>{const u=db.prepare('SELECT * FROM users WHERE id=?').get(req.user.id) as any; if(!u)return res.status(404).json({error:'User not found'}); db.prepare('UPDATE users SET last_seen=? WHERE id=?').run(now(),u.id); res.json({user:safeUser({...u,last_seen:now()})})});
 app.post('/api/presence/ping',auth,(req:any,res)=>{db.prepare('UPDATE users SET last_seen=? WHERE id=?').run(now(),req.user.id);res.json({ok:true,last_seen:now()})});

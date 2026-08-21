@@ -44,7 +44,6 @@ CREATE TABLE IF NOT EXISTS notifications(id INTEGER PRIMARY KEY AUTOINCREMENT,us
 CREATE TABLE IF NOT EXISTS direct_threads(id INTEGER PRIMARY KEY AUTOINCREMENT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS direct_members(thread_id INTEGER NOT NULL,user_id INTEGER NOT NULL,PRIMARY KEY(thread_id,user_id));
 CREATE TABLE IF NOT EXISTS blocked_users(user_id INTEGER NOT NULL,blocked_id INTEGER NOT NULL,created_at TEXT NOT NULL,PRIMARY KEY(user_id,blocked_id));
-CREATE TABLE IF NOT EXISTS otp_challenges(id INTEGER PRIMARY KEY AUTOINCREMENT,phone TEXT NOT NULL,purpose TEXT NOT NULL,provider_sid TEXT,verified INTEGER NOT NULL DEFAULT 0,created_at TEXT NOT NULL,expires_at TEXT NOT NULL,attempts INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS direct_messages(id INTEGER PRIMARY KEY AUTOINCREMENT,thread_id INTEGER NOT NULL,sender_id INTEGER NOT NULL,content TEXT NOT NULL DEFAULT '',attachment_json TEXT,reply_to_id INTEGER,reaction_json TEXT,created_at TEXT NOT NULL,read_at TEXT);
 `);
 function ensureColumn(table:string,column:string,definition:string){const cols=db.prepare(`PRAGMA table_info(${table})`).all() as any[];if(!cols.some(c=>c.name===column))db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`)}
@@ -54,7 +53,6 @@ ensureColumn('users','phone','TEXT');
 ensureColumn('users','avatar_path','TEXT');
 ensureColumn('users','avatar_url','TEXT');
 ensureColumn('users','last_seen','TEXT');
-try { db.exec('CREATE INDEX IF NOT EXISTS idx_otp_phone_purpose ON otp_challenges(phone,purpose,created_at)'); } catch {}
 
 ensureColumn('tasks','priority',"TEXT NOT NULL DEFAULT 'medium'");
 ensureColumn('conversations','kind',"TEXT NOT NULL DEFAULT 'assistant'");
