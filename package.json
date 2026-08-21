@@ -1,0 +1,17 @@
+{
+  "name": "mindvault",
+  "version": "1.2.0",
+  "private": true,
+  "scripts": {
+    "install:all": "npm install && npm --prefix client install && npm --prefix server install",
+    "dev": "concurrently \"npm --prefix server run dev\" \"npm --prefix client run dev\"",
+    "build:client": "npm --prefix client run build",
+    "build:server": "npm --prefix server run build",
+    "build": "npm run build:client && npm run build:server",
+    "start": "npm --prefix server start",
+    "verify": "npm run build:client && npm run build:server"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}

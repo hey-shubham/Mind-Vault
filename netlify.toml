@@ -1,0 +1,8 @@
+[build]
+  command = "npm install && npm --prefix client install && npm --prefix client run build"
+  publish = "client/dist"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
